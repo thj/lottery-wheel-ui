@@ -5,9 +5,19 @@ import { useUserStore } from '../stores/user'
 import LotteryWheel from '../components/LotteryWheel.vue'
 import { getPrizes } from '../api/prizeService'
 import axios from 'axios'
+import { useI18n } from 'vue-i18n'
+import { setLanguage } from '../i18n'
 
 const router = useRouter()
 const userStore = useUserStore()
+const { t } = useI18n()
+
+// 切换语言
+const toggleLanguage = () => {
+  const currentLocale = localStorage.getItem('language') || 'zh'
+  const newLocale = currentLocale === 'zh' ? 'en' : 'zh'
+  setLanguage(newLocale)
+}
 
 // 抽奖相关状态
 const isSpinning = ref(false)
@@ -31,33 +41,42 @@ onMounted(async () => {
     loading.value = true
     const prizeData = await getPrizes()
     prizeObjects.value = prizeData // 存储完整的奖品对象
-    prizes.value = prizeData.map(item => item.name)
+    
+    // 尝试使用国际化翻译API返回的奖品名称
+    prizes.value = prizeData.map(item => {
+      // 尝试使用 prizes.api.{id} 作为翻译键
+      const translationKey = `prizes.api.${item.id}`
+      // 检查是否有对应的翻译，如果没有则使用原始名称
+      return t(translationKey) !== translationKey ? t(translationKey) : item.name
+    })
     
     // 检查是否已包含"谢谢参与"，如果没有则添加到列表开头
-    if (!prizes.value.includes('谢谢参与')) {
-      prizes.value.unshift('谢谢参与')
+    const thankYouText = t('lottery.thankYou')
+    if (!prizes.value.includes(thankYouText)) {
+      prizes.value.unshift(thankYouText)
       // 同时在prizeObjects中添加"谢谢参与"对象
-      prizeObjects.value.unshift({ id: 0, name: '谢谢参与' })
+      prizeObjects.value.unshift({ id: 0, name: thankYouText })
     }
   } catch (err) {
-    console.error('获取奖品失败:', err)
-    if (err.message === '未登录，请先登录') {
-      error.value = '请先登录后再参与抽奖'
+    console.error(t('lottery.fetchPrizesFailed'), err)
+    if (err.message === t('errors.notLoggedIn')) {
+      error.value = t('errors.loginRequired')
       // 清空奖品列表
       prizes.value = []
       // 可以在这里添加跳转到登录页的逻辑
       // router.push('/login')
     } else {
-      error.value = '获取奖品失败，请稍后重试'
+      error.value = t('errors.fetchPrizesFailed')
       // 使用默认奖品作为后备
       prizes.value = [
-        '一等奖', '二等奖', '三等奖', '四等奖', 
-        '五等奖', '六等奖', '七等奖', '八等奖'
+        t('prizes.first'), t('prizes.second'), t('prizes.third'), t('prizes.fourth'), 
+        t('prizes.fifth'), t('prizes.sixth'), t('prizes.seventh'), t('prizes.eighth')
       ]
       
       // 同样检查默认列表是否已包含"谢谢参与"
-      if (!prizes.value.includes('谢谢参与')) {
-        prizes.value.unshift('谢谢参与')
+      const thankYouText = t('lottery.thankYou')
+      if (!prizes.value.includes(thankYouText)) {
+        prizes.value.unshift(thankYouText)
       }
     }
   } finally {
@@ -87,7 +106,7 @@ const startSpin = () => {
 const confirmInviteCode = async () => {
   // 简单验证邀请码是否为空
   if (!inviteCode.value.trim()) {
-    inviteCodeError.value = '请输入邀请码'
+    inviteCodeError.value = t('errors.emptyInviteCode')
     return
   }
   
@@ -133,24 +152,24 @@ const confirmInviteCode = async () => {
       } else {
         // 如果后端没有返回具体奖品，使用默认逻辑
         isWinner.value = false
-        result.value = '谢谢参与'
+        result.value = t('lottery.thankYou')
       }
       
       // 开始抽奖动画
       isSpinning.value = true
     } else {
       // 如果请求失败，显示错误信息
-      const errorMsg = response.data?.msg || '请稍后重试'
-      console.error('抽奖请求失败:', errorMsg)
-      result.value = '抽奖失败，' + errorMsg
+      const errorMsg = response.data?.msg || t('errors.tryAgainLater')
+      console.error(t('errors.drawRequestFailed'), errorMsg)
+      result.value = t('errors.drawFailedWithReason', { reason: errorMsg })
       isWinner.value = false
       // 显示结果弹窗，提示用户错误信息
       showResult.value = true
     }
   } catch (error) {
     // 处理请求异常
-    console.error('抽奖请求异常:', error)
-    result.value = '抽奖失败'
+    console.error(t('errors.drawRequestException'), error)
+    result.value = t('errors.drawFailed')
     isWinner.value = false
     // 显示结果弹窗，提示用户错误信息
     showResult.value = true
@@ -184,11 +203,17 @@ const onSpinEnd = (prize: string) => {
 
 <template>
   <div class="lottery-container">
+    <div class="language-switcher">
+      <button @click="toggleLanguage" class="language-button">
+        {{ t('common.switchLanguage') }}
+      </button>
+    </div>
+    
     <header class="lottery-header">
-      <h1>幸运大转盘</h1>
+      <h1>{{ t('lottery.title') }}</h1>
       <div class="user-info">
-        <span>欢迎, {{ userStore.username }}</span>
-        <button class="logout-button" @click="handleLogout">退出登录</button>
+        <span>{{ t('lottery.welcome') }}, {{ userStore.username }}</span>
+        <button class="logout-button" @click="handleLogout">{{ t('lottery.logout') }}</button>
       </div>
     </header>
     
@@ -197,13 +222,13 @@ const onSpinEnd = (prize: string) => {
         <template v-if="loading">
           <div class="loading-container">
             <div class="loading-spinner"></div>
-            <p>正在加载奖品...</p>
+            <p>{{ t('lottery.loading') }}</p>
           </div>
         </template>
         <template v-else-if="error">
           <div class="error-message">
             <p>{{ error }}</p>
-            <button class="retry-button" @click="onMounted">重试</button>
+            <button class="retry-button" @click="onMounted">{{ t('common.retry') }}</button>
           </div>
         </template>
         <template v-else>
@@ -222,39 +247,41 @@ const onSpinEnd = (prize: string) => {
           @click="startSpin" 
           :disabled="isSpinning || loading || prizes.length === 0"
         >
-          {{ isSpinning ? '抽奖中...' : (loading ? '加载中...' : '开始抽奖') }}
+          {{ isSpinning ? t('lottery.spinning') : (loading ? t('lottery.loading') : t('lottery.startSpin')) }}
         </button>
       </div>
       
       <div class="result-modal" v-if="showResult" @click.self="showResult = false">
         <div class="modal-content">
-          <h2>{{ isWinner ? '恭喜您获得' : '' }}</h2>
+          <h2>{{ isWinner ? t('lottery.congratulations') : '' }}</h2>
           <div class="prize-name">{{ result }}</div>
-          <button class="close-button" @click="showResult = false">确定</button>
+          <button class="close-button" @click="showResult = false">{{ t('common.confirm') }}</button>
         </div>
       </div>
       
       <!-- 邀请码输入弹窗 -->
       <div class="invite-code-modal" v-if="showInviteCodeModal" @click.self="showInviteCodeModal = false">
         <div class="modal-content">
-          <h2>请输入邀请码</h2>
+          <h2>{{ t('lottery.enterInviteCode') }}</h2>
           <div class="input-group">
             <input 
               v-model="inviteCode" 
               type="text" 
-              placeholder="请输入邀请码"
+              :placeholder="t('lottery.inviteCodePlaceholder')"
               @keyup.enter="confirmInviteCode"
               class="invite-code-input"
             />
             <p v-if="inviteCodeError" class="error-text">{{ inviteCodeError }}</p>
           </div>
           <div class="button-group">
-                      <button class="cancel-button" @click="showInviteCodeModal = false" :disabled="isSubmitting">取消</button>
-                      <button class="confirm-button" @click="confirmInviteCode" :disabled="isSubmitting">
-                        <span v-if="isSubmitting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                        {{ isSubmitting ? '提交中...' : '确定' }}
-                      </button>
-                    </div>
+            <button class="cancel-button" @click="showInviteCodeModal = false" :disabled="isSubmitting">
+              {{ t('common.cancel') }}
+            </button>
+            <button class="confirm-button" @click="confirmInviteCode" :disabled="isSubmitting">
+              <span v-if="isSubmitting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              {{ isSubmitting ? t('common.submitting') : t('common.confirm') }}
+            </button>
+          </div>
         </div>
       </div>
     </main>
@@ -265,6 +292,32 @@ const onSpinEnd = (prize: string) => {
 .lottery-container {
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+.language-switcher {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+}
+
+.language-button {
+  background: rgba(230, 126, 34, 0.8);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.language-button:hover {
+  background: rgba(230, 126, 34, 1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(230, 126, 34, 0.3);
 }
 
 .lottery-header {
@@ -274,6 +327,7 @@ const onSpinEnd = (prize: string) => {
   padding: 20px;
   background-color: rgba(255, 255, 255, 0.9);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  margin-top: 60px;
 }
 
 .lottery-header h1 {
