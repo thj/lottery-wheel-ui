@@ -13,10 +13,108 @@ const userStore = useUserStore()
 const { t } = useI18n()
 
 // 切换语言
-const toggleLanguage = () => {
+const toggleLanguage = async () => {
   const currentLocale = localStorage.getItem('language') || 'zh'
   const newLocale = currentLocale === 'zh' ? 'en' : 'zh'
   setLanguage(newLocale)
+  
+  // 重新获取奖品列表
+  try {
+    loading.value = true
+    const prizeData = await getPrizes()
+    prizeObjects.value = prizeData
+    
+    // 更新奖品名称翻译
+    prizes.value = prizeData.map(item => {
+      if (item.id) {
+        if (item.id.toString().length > 10) {
+          return item.name
+        }
+        const translationKey = `prizes.api.${item.id}`
+        return t(translationKey) !== translationKey ? t(translationKey) : item.name
+      }
+      return item.name
+    })
+    
+    // 检查是否已包含"谢谢参与"
+    const thankYouText = t('lottery.thankYou')
+    if (!prizes.value.includes(thankYouText)) {
+      prizes.value.unshift(thankYouText)
+      prizeObjects.value.unshift({ id: 0, name: thankYouText })
+    }
+    
+    // 如果已经有邀请码，重新发起抽奖请求
+    if (inviteCode.value.trim()) {
+      try {
+        // 重置结果状态
+        showResult.value = false
+        result.value = ''
+        
+        // 发送请求到后端接口
+        const response = await axios.post(
+          `http://192.168.5.150:8080/retail-admin/system/draw/${inviteCode.value.trim()}`, 
+          {}, 
+          {
+            headers: {
+              'Authorization': 'Bearer ' + userStore.token
+            }
+          }
+        )
+        
+        // 检查响应状态
+        if (response.data && response.data.code === 200) {
+          if (response.data.data.isWinner) {
+            isWinner.value = true
+            const winPrizeId = response.data.data.prizeVo.id
+            
+            const matchedPrize = prizeObjects.value.find(prize => prize.id === winPrizeId)
+            
+            if (matchedPrize) {
+              result.value = matchedPrize.name
+            } else {
+              result.value = response.data.data.prizeVo.name
+            }
+          } else {
+            isWinner.value = false
+            result.value = t('lottery.thankYou')
+          }
+          
+          // 开始抽奖动画
+          isSpinning.value = true
+        } else {
+          const errorMsg = response.data?.msg || t('errors.tryAgainLater')
+          console.error(t('errors.drawRequestFailed'), errorMsg)
+          result.value = t('errors.drawFailedWithReason', { reason: errorMsg })
+          isWinner.value = false
+          showResult.value = true
+        }
+      } catch (error) {
+        console.error(t('errors.drawRequestException'), error)
+        result.value = t('errors.drawFailed')
+        isWinner.value = false
+        showResult.value = true
+      }
+    }
+  } catch (err) {
+    console.error(t('lottery.fetchPrizesFailed'), err)
+    if (err.message === t('errors.notLoggedIn')) {
+      error.value = t('errors.loginRequired')
+      prizes.value = []
+    } else {
+      error.value = t('errors.fetchPrizesFailed')
+      prizes.value = [
+        t('prizes.first'), t('prizes.second'), t('prizes.third'), t('prizes.fourth'), 
+        t('prizes.fifth'), t('prizes.sixth'), t('prizes.seventh'), t('prizes.eighth')
+      ]
+      
+      const thankYouText = t('lottery.thankYou')
+      if (!prizes.value.includes(thankYouText)) {
+        prizes.value.unshift(thankYouText)
+      }
+    }
+  } finally {
+    loading.value = false
+  }
 }
 
 // 抽奖相关状态
@@ -44,10 +142,19 @@ onMounted(async () => {
     
     // 尝试使用国际化翻译API返回的奖品名称
     prizes.value = prizeData.map(item => {
-      // 尝试使用 prizes.api.{id} 作为翻译键
-      const translationKey = `prizes.api.${item.id}`
-      // 检查是否有对应的翻译，如果没有则使用原始名称
-      return t(translationKey) !== translationKey ? t(translationKey) : item.name
+      // 如果奖品有ID
+      if (item.id) {
+        // 对于长数字ID（大于10位），直接显示奖品名称
+        if (item.id.toString().length > 10) {
+          return item.name
+        }
+        // 对于短ID，尝试使用 prizes.api.{id} 作为翻译键
+        const translationKey = `prizes.api.${item.id}`
+        // 检查是否有对应的翻译，如果没有则使用原始名称
+        return t(translationKey) !== translationKey ? t(translationKey) : item.name
+      }
+      // 如果没有ID，直接使用原始名称
+      return item.name
     })
     
     // 检查是否已包含"谢谢参与"，如果没有则添加到列表开头

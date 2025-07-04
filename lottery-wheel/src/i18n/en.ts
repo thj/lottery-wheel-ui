@@ -85,7 +85,12 @@ export default {
       7: 'Fifth Prize',
       8: 'Sixth Prize',
       9: 'Seventh Prize',
-      10: 'Eighth Prize'
+      10: 'Eighth Prize',
+      11: 'Xiaomi Earphones',
+      12: 'Bluetooth Speaker',
+      13: 'Smart Watch',
+      14: 'Power Bank',
+      15: 'Wireless Charger'
       // 可以根据实际API返回的奖品ID添加更多翻译
     }
   }
