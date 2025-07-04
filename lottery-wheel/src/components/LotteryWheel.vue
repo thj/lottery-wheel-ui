@@ -105,8 +105,12 @@ const startSpin = () => {
   
   // 计算最终角度
   const baseAngle = 360 * 5 // 基础旋转5圈
-  const targetAngle = (randomIndex * sectorAngle.value) + (sectorAngle.value / 2) + 45
-  const finalAngle = baseAngle + targetAngle
+  // 注意：转盘旋转后，指针指向的是转盘旋转方向的反方向
+  // 因此需要用总数减去索引，再加上适当的偏移确保指针指向奖品中心
+  // 添加90度偏移，使起点逆时针旋转90度
+  const targetAngle = 360 - (randomIndex * sectorAngle.value) - (sectorAngle.value / 2) + 90
+  // 在原有基础上增加180度的旋转角度
+  const finalAngle = baseAngle + targetAngle + 180
   
   // 动画参数
   const startTime = Date.now()

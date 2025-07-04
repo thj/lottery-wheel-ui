@@ -23,6 +23,7 @@ const isWinner = ref(false)
 const showInviteCodeModal = ref(false)
 const inviteCode = ref('')
 const inviteCodeError = ref<string | null>(null)
+const isSubmitting = ref(false) // 添加邀请码提交状态
 
 // 获取奖品列表
 onMounted(async () => {
@@ -90,6 +91,9 @@ const confirmInviteCode = async () => {
     return
   }
   
+  // 设置提交状态为加载中
+  isSubmitting.value = true
+  
   try {
     // 关闭邀请码输入弹窗
     showInviteCodeModal.value = false
@@ -136,16 +140,23 @@ const confirmInviteCode = async () => {
       isSpinning.value = true
     } else {
       // 如果请求失败，显示错误信息
-      const errorMsg = response.data?.msg || '抽奖失败，请稍后重试'
+      const errorMsg = response.data?.msg || '请稍后重试'
       console.error('抽奖请求失败:', errorMsg)
       result.value = '抽奖失败，' + errorMsg
       isWinner.value = false
+      // 显示结果弹窗，提示用户错误信息
+      showResult.value = true
     }
   } catch (error) {
     // 处理请求异常
     console.error('抽奖请求异常:', error)
     result.value = '抽奖失败'
     isWinner.value = false
+    // 显示结果弹窗，提示用户错误信息
+    showResult.value = true
+  } finally {
+    // 无论成功还是失败，都将提交状态设置为false
+    isSubmitting.value = false
   }
 }
 
@@ -238,9 +249,12 @@ const onSpinEnd = (prize: string) => {
             <p v-if="inviteCodeError" class="error-text">{{ inviteCodeError }}</p>
           </div>
           <div class="button-group">
-            <button class="cancel-button" @click="showInviteCodeModal = false">取消</button>
-            <button class="confirm-button" @click="confirmInviteCode">确定</button>
-          </div>
+                      <button class="cancel-button" @click="showInviteCodeModal = false" :disabled="isSubmitting">取消</button>
+                      <button class="confirm-button" @click="confirmInviteCode" :disabled="isSubmitting">
+                        <span v-if="isSubmitting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        {{ isSubmitting ? '提交中...' : '确定' }}
+                      </button>
+                    </div>
         </div>
       </div>
     </main>
@@ -464,6 +478,25 @@ const onSpinEnd = (prize: string) => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* 按钮加载指示器样式 */
+.spinner-border {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 0.15em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  margin-right: 0.5rem;
+  vertical-align: text-bottom;
+}
+
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 0.1em;
 }
 
 /* 邀请码输入弹窗样式 */
