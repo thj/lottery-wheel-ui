@@ -14,6 +14,7 @@ const isSpinning = ref(false)
 const result = ref('')
 const showResult = ref(false)
 const prizes = ref<string[]>([])
+const prizeObjects = ref<any[]>([]) // 存储完整的奖品对象
 const loading = ref(false)
 const error = ref<string | null>(null)
 const isWinner = ref(false)
@@ -28,11 +29,14 @@ onMounted(async () => {
   try {
     loading.value = true
     const prizeData = await getPrizes()
+    prizeObjects.value = prizeData // 存储完整的奖品对象
     prizes.value = prizeData.map(item => item.name)
     
     // 检查是否已包含"谢谢参与"，如果没有则添加到列表开头
     if (!prizes.value.includes('谢谢参与')) {
       prizes.value.unshift('谢谢参与')
+      // 同时在prizeObjects中添加"谢谢参与"对象
+      prizeObjects.value.unshift({ id: 0, name: '谢谢参与' })
     }
   } catch (err) {
     console.error('获取奖品失败:', err)
@@ -90,8 +94,7 @@ const confirmInviteCode = async () => {
     // 关闭邀请码输入弹窗
     showInviteCodeModal.value = false
     
-    // 开始抽奖动画
-    isSpinning.value = true
+    // 重置结果状态
     showResult.value = false
     result.value = ''
     
@@ -107,19 +110,30 @@ const confirmInviteCode = async () => {
     )
     
     // 检查响应状态
-    console.log(3333, response.data)
     if (response.data && response.data.code === 200) {
       // 如果后端返回了抽奖结果，使用后端返回的结果
       if (response.data.data.isWinner) {
         isWinner.value = true
-        result.value = response.data.data.prizeVo.name
+        const winPrizeId = response.data.data.prizeVo.id
+        
+        // 在prizeObjects中查找匹配ID的奖品
+        const matchedPrize = prizeObjects.value.find(prize => prize.id === winPrizeId)
+        
+        if (matchedPrize) {
+          // 如果找到匹配的奖品，使用其名称
+          result.value = matchedPrize.name
+        } else {
+          // 如果没有找到匹配的奖品，使用接口返回的名称
+          result.value = response.data.data.prizeVo.name
+        }
       } else {
         // 如果后端没有返回具体奖品，使用默认逻辑
-        // const randomIndex = Math.floor(Math.random() * prizes.value.length)
-        // result.value = prizes.value[randomIndex]
         isWinner.value = false
         result.value = '谢谢参与'
       }
+      
+      // 开始抽奖动画
+      isSpinning.value = true
     } else {
       // 如果请求失败，显示错误信息
       const errorMsg = response.data?.msg || '抽奖失败，请稍后重试'
