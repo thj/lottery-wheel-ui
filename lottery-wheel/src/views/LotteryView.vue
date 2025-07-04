@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import LotteryWheel from '../components/LotteryWheel.vue'
 import { getPrizes } from '../api/prizeService'
+import axios from 'axios'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -15,6 +16,12 @@ const showResult = ref(false)
 const prizes = ref<string[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
+const isWinner = ref(false)
+
+// 邀请码相关状态
+const showInviteCodeModal = ref(false)
+const inviteCode = ref('')
+const inviteCodeError = ref<string | null>(null)
 
 // 获取奖品列表
 onMounted(async () => {
@@ -22,6 +29,11 @@ onMounted(async () => {
     loading.value = true
     const prizeData = await getPrizes()
     prizes.value = prizeData.map(item => item.name)
+    
+    // 检查是否已包含"谢谢参与"，如果没有则添加到列表开头
+    if (!prizes.value.includes('谢谢参与')) {
+      prizes.value.unshift('谢谢参与')
+    }
   } catch (err) {
     console.error('获取奖品失败:', err)
     if (err.message === '未登录，请先登录') {
@@ -37,6 +49,11 @@ onMounted(async () => {
         '一等奖', '二等奖', '三等奖', '四等奖', 
         '五等奖', '六等奖', '七等奖', '八等奖'
       ]
+      
+      // 同样检查默认列表是否已包含"谢谢参与"
+      if (!prizes.value.includes('谢谢参与')) {
+        prizes.value.unshift('谢谢参与')
+      }
     }
   } finally {
     loading.value = false
@@ -49,25 +66,90 @@ const handleLogout = () => {
   router.push('/login')
 }
 
-// 开始抽奖
+// 显示邀请码输入弹窗
 const startSpin = () => {
   if (isSpinning.value) return
   
-  isSpinning.value = true
-  showResult.value = false
-  result.value = ''
+  // 重置邀请码和错误信息
+  inviteCode.value = ''
+  inviteCodeError.value = null
+  
+  // 显示邀请码输入弹窗
+  showInviteCodeModal.value = true
+}
+
+// 确认邀请码并开始抽奖
+const confirmInviteCode = async () => {
+  // 简单验证邀请码是否为空
+  if (!inviteCode.value.trim()) {
+    inviteCodeError.value = '请输入邀请码'
+    return
+  }
+  
+  try {
+    // 关闭邀请码输入弹窗
+    showInviteCodeModal.value = false
+    
+    // 开始抽奖动画
+    isSpinning.value = true
+    showResult.value = false
+    result.value = ''
+    
+    // 发送请求到后端接口
+    const response = await axios.post(
+      `http://192.168.5.150:8080/retail-admin/system/draw/${inviteCode.value.trim()}`, 
+      {}, 
+      {
+        headers: {
+          'Authorization': 'Bearer ' + userStore.token
+        }
+      }
+    )
+    
+    // 检查响应状态
+    console.log(3333, response.data)
+    if (response.data && response.data.code === 200) {
+      // 如果后端返回了抽奖结果，使用后端返回的结果
+      if (response.data.data.isWinner) {
+        isWinner.value = true
+        result.value = response.data.data.prizeVo.name
+      } else {
+        // 如果后端没有返回具体奖品，使用默认逻辑
+        // const randomIndex = Math.floor(Math.random() * prizes.value.length)
+        // result.value = prizes.value[randomIndex]
+        isWinner.value = false
+        result.value = '谢谢参与'
+      }
+    } else {
+      // 如果请求失败，显示错误信息
+      const errorMsg = response.data?.msg || '抽奖失败，请稍后重试'
+      console.error('抽奖请求失败:', errorMsg)
+      result.value = '抽奖失败，' + errorMsg
+      isWinner.value = false
+    }
+  } catch (error) {
+    // 处理请求异常
+    console.error('抽奖请求异常:', error)
+    result.value = '抽奖失败'
+    isWinner.value = false
+  }
 }
 
 // 抽奖结束
 const onSpinEnd = (prize: string) => {
   isSpinning.value = false
-  result.value = prize
+  
+  // 如果result.value为空，使用传入的prize参数
+  if (!result.value) {
+    result.value = prize
+  }
+  
   showResult.value = true
   
   // 保存抽奖历史（可以扩展为存储到localStorage或发送到服务器）
   const history = JSON.parse(localStorage.getItem('lotteryHistory') || '[]')
   history.push({
-    prize,
+    prize: result.value, // 使用result.value而不是prize
     timestamp: new Date().toISOString(),
     username: userStore.username
   })
@@ -103,6 +185,7 @@ const onSpinEnd = (prize: string) => {
           <LotteryWheel 
             :prizes="prizes" 
             :isSpinning="isSpinning" 
+            :presetResult="result"
             @spin-end="onSpinEnd" 
           />
         </template>
@@ -120,9 +203,30 @@ const onSpinEnd = (prize: string) => {
       
       <div class="result-modal" v-if="showResult" @click.self="showResult = false">
         <div class="modal-content">
-          <h2>恭喜您获得</h2>
+          <h2>{{ isWinner ? '恭喜您获得' : '' }}</h2>
           <div class="prize-name">{{ result }}</div>
           <button class="close-button" @click="showResult = false">确定</button>
+        </div>
+      </div>
+      
+      <!-- 邀请码输入弹窗 -->
+      <div class="invite-code-modal" v-if="showInviteCodeModal" @click.self="showInviteCodeModal = false">
+        <div class="modal-content">
+          <h2>请输入邀请码</h2>
+          <div class="input-group">
+            <input 
+              v-model="inviteCode" 
+              type="text" 
+              placeholder="请输入邀请码"
+              @keyup.enter="confirmInviteCode"
+              class="invite-code-input"
+            />
+            <p v-if="inviteCodeError" class="error-text">{{ inviteCodeError }}</p>
+          </div>
+          <div class="button-group">
+            <button class="cancel-button" @click="showInviteCodeModal = false">取消</button>
+            <button class="confirm-button" @click="confirmInviteCode">确定</button>
+          </div>
         </div>
       </div>
     </main>
@@ -346,6 +450,92 @@ const onSpinEnd = (prize: string) => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* 邀请码输入弹窗样式 */
+.invite-code-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.invite-code-input {
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  margin-bottom: 10px;
+  transition: border-color 0.3s;
+}
+
+.invite-code-input:focus {
+  border-color: #e67e22;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(230, 126, 34, 0.2);
+}
+
+.error-text {
+  color: #e74c3c;
+  font-size: 14px;
+  margin-top: 5px;
+  margin-bottom: 15px;
+}
+
+.input-group {
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.button-group {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  width: 100%;
+}
+
+.cancel-button {
+  flex: 1;
+  background-color: #ecf0f1;
+  color: #7f8c8d;
+  border: none;
+  padding: 10px 0;
+  border-radius: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cancel-button:hover {
+  background-color: #bdc3c7;
+  color: #2c3e50;
+}
+
+.confirm-button {
+  flex: 1;
+  background-color: #e67e22;
+  color: white;
+  border: none;
+  padding: 10px 0;
+  border-radius: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.confirm-button:hover {
+  background-color: #d35400;
+  transform: translateY(-2px);
 }
 
 @media (max-width: 768px) {

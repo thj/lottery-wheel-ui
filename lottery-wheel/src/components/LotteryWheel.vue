@@ -4,6 +4,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 const props = defineProps<{
   prizes: string[]
   isSpinning: boolean
+  presetResult?: string
 }>()
 
 const emit = defineEmits<{
@@ -90,9 +91,17 @@ const drawWheel = () => {
 
 // 开始旋转
 const startSpin = () => {
-  // 随机选择一个奖项
-  const randomIndex = Math.floor(Math.random() * props.prizes.length)
-  const selectedPrize = props.prizes[randomIndex]
+  let selectedPrize: string;
+  let randomIndex: number;
+  
+  // 如果提供了预设结果，使用它；否则，随机选择一个奖项
+  if (props.presetResult && props.prizes.includes(props.presetResult)) {
+    selectedPrize = props.presetResult;
+    randomIndex = props.prizes.indexOf(selectedPrize);
+  } else {
+    randomIndex = Math.floor(Math.random() * props.prizes.length);
+    selectedPrize = props.prizes[randomIndex];
+  }
   
   // 计算最终角度
   const baseAngle = 360 * 5 // 基础旋转5圈
